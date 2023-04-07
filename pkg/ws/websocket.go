@@ -16,13 +16,15 @@ type User struct{
 	userId string
 	host bool
 	gameId int
+	photo string
 }
 
 type UserClient struct{
 	Username string 
 	UserId string 	
 	Host bool
-	GameId int 	
+	GameId int
+	Photo string 	
 }
 
 type Packet struct {
@@ -58,6 +60,7 @@ func receiver(ws *websocket.Conn){
 		roomId :=strings.TrimSpace(string(uuid))
 		data := packet.Data.(map[string] interface {})
 		username :=data["username"].(string)
+		photo :=data["photo"].(string)
 		userId :=data["userId"].(string)
 		user := User{
 			conn: ws,
@@ -65,6 +68,7 @@ func receiver(ws *websocket.Conn){
 			host: true,
 			userId:  userId,
 			gameId: 1,
+			photo: photo,
 		}
 		users := []User{user}
 		rooms[roomId]= users
@@ -108,12 +112,14 @@ func receiver(ws *websocket.Conn){
 		roomId := data["roomId"].(string)
 		username := data["username"].(string)
 		userId := data["userId"].(string)
+		photo := data["photo"].(string)
 		user := User{
 			conn : ws,
 			username: username,
 			userId: userId,
 			host: false,
 			gameId: 2,
+			photo: photo,
 		}
 		room := rooms[roomId]
 		room = append(room,user)
@@ -128,6 +134,7 @@ func receiver(ws *websocket.Conn){
 					UserId: room[j].userId,
 					Host: room[j].host,
 					GameId: room[j].gameId,
+					Photo: room[j].photo,
 				})
 			}
 			packet.Data=players
