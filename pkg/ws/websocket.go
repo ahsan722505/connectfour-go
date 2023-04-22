@@ -26,13 +26,17 @@ type UserClient struct{
 	GameId int
 	Photo string 	
 }
+type Room struct{
+	users []User
+	playAgainRequest bool
+}
 
 type Packet struct {
 	Type string
 	Data interface {}
 }
 
-var rooms = make(map[string][]User)
+var rooms = make(map[string]Room)
 var upgrader= websocket.Upgrader{
 	ReadBufferSize: 1024,
 	WriteBufferSize: 1024,
@@ -71,7 +75,10 @@ func receiver(ws *websocket.Conn){
 			photo: photo,
 		}
 		users := []User{user}
-		rooms[roomId]= users
+		rooms[roomId]= Room{
+			users: users,
+			playAgainRequest: false,
+		}
 		packet.Type="room-created"
 		packet.Data= roomId
 		log.Println(packet)
@@ -83,8 +90,8 @@ func receiver(ws *websocket.Conn){
 		cellInd := data["cellInd"].(float64)
 		roomId := data["roomId"].(string)
 		oppId := data["oppId"].(string)
-		room := rooms[roomId]
-		for _,user := range room{
+		roomUsers := rooms[roomId].users
+		for _,user := range roomUsers{
 			if user.userId == oppId{
 				packet.Type="oppturn"
 				packet.Data = cellInd
@@ -93,16 +100,45 @@ func receiver(ws *websocket.Conn){
 		}
 		
 	}
-	if packet.Type == "playAgainSignal" || packet.Type == "leaveGame"{
+	if packet.Type == "leaveGame"{
 		data := packet.Data.(map[string] interface{})
 		roomId := data["roomId"].(string)
 		oppId := data["oppId"].(string)
-		room := rooms[roomId]
-		for _,user := range room{
+		roomUsers := rooms[roomId].users
+		for _,user := range roomUsers{
 			if user.userId == oppId{
 				packet.Data = nil
 				user.conn.WriteJSON(packet)
 			}
+		}
+		
+	}
+
+	if packet.Type == "playAgainRequest"{
+		data := packet.Data.(map[string] interface{})
+		roomId := data["roomId"].(string)
+		oppId := data["oppId"].(string)
+		room := rooms[roomId]
+		println("playAgainRequest")
+		roomUsers := room.users
+		if room.playAgainRequest{
+			for _,user := range roomUsers{
+				packet.Type="playAgain"
+				packet.Data = nil
+				user.conn.WriteJSON(packet)
+			}
+			room.playAgainRequest = false
+			rooms[roomId] = room
+		}else{
+			// forwarding request to other client	
+			for _,user := range roomUsers{
+				if user.userId == oppId{
+					packet.Data = nil
+					user.conn.WriteJSON(packet)
+				}
+			}
+			room.playAgainRequest = true
+			rooms[roomId] = room
 		}
 		
 	}
@@ -122,19 +158,21 @@ func receiver(ws *websocket.Conn){
 			photo: photo,
 		}
 		room := rooms[roomId]
-		room = append(room,user)
+		roomUsers := room.users
+		roomUsers = append(roomUsers,user)
+		room.users = roomUsers
 		rooms[roomId]=room
-		for i := 0 ; i< len(room) ; i++{
-			socket := room[i].conn
+		for i := 0 ; i< len(roomUsers) ; i++{
+			socket := roomUsers[i].conn
 			packet.Type="start-game"
 			players := []UserClient{}
-			for j:= 0 ; j < len(room) ; j++{
+			for j:= 0 ; j < len(roomUsers) ; j++{
 				players=append(players, UserClient{
-					Username: room[j].username,
-					UserId: room[j].userId,
-					Host: room[j].host,
-					GameId: room[j].gameId,
-					Photo: room[j].photo,
+					Username: roomUsers[j].username,
+					UserId: roomUsers[j].userId,
+					Host: roomUsers[j].host,
+					GameId: roomUsers[j].gameId,
+					Photo: roomUsers[j].photo,
 				})
 			}
 			packet.Data=players
