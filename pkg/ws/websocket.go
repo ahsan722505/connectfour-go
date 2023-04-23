@@ -58,30 +58,17 @@ func receiver(ws *websocket.Conn){
 		err :=ws.ReadJSON(packet)
 	if err != nil{
 		log.Println(err)
+		break
 	}
 	if packet.Type == "create-room"{
 		uuid,_ := exec.Command("uuidgen").Output()
 		roomId :=strings.TrimSpace(string(uuid))
-		data := packet.Data.(map[string] interface {})
-		username :=data["username"].(string)
-		photo :=data["photo"].(string)
-		userId :=data["userId"].(string)
-		user := User{
-			conn: ws,
-			username : username,
-			host: true,
-			userId:  userId,
-			gameId: 1,
-			photo: photo,
-		}
-		users := []User{user}
 		rooms[roomId]= Room{
-			users: users,
+			users: []User{},
 			playAgainRequest: false,
 		}
 		packet.Type="room-created"
 		packet.Data= roomId
-		log.Println(packet)
 		ws.WriteJSON(packet)
 	}
 
@@ -149,20 +136,40 @@ func receiver(ws *websocket.Conn){
 		username := data["username"].(string)
 		userId := data["userId"].(string)
 		photo := data["photo"].(string)
+		host := data["host"].(bool)
+		room := rooms[roomId]
+		roomUsers := room.users
+
+		// checking if user is trying to reconnect
+		found := false
+		for i := range roomUsers{
+			if roomUsers[i].userId == userId{
+				roomUsers[i].conn = ws
+				room.users = roomUsers
+				rooms[roomId] = room
+				found = true
+				break
+			}
+		}
+		if found{
+			continue
+		}
+
 		user := User{
 			conn : ws,
 			username: username,
 			userId: userId,
-			host: false,
-			gameId: 2,
+			host: host,
+			gameId: len(roomUsers) + 1,
 			photo: photo,
 		}
-		room := rooms[roomId]
-		roomUsers := room.users
 		roomUsers = append(roomUsers,user)
 		room.users = roomUsers
 		rooms[roomId]=room
+		if len(roomUsers) == 2{
 		for i := 0 ; i< len(roomUsers) ; i++{
+			// emitting event to start game
+			log.Println("emitting start-game event")
 			socket := roomUsers[i].conn
 			packet.Type="start-game"
 			players := []UserClient{}
@@ -183,6 +190,7 @@ func receiver(ws *websocket.Conn){
 			fmt.Printf("json data: %s\n", jsonData)
 			socket.WriteJSON(packet)
 		}
+	}
 	}
 		
 
