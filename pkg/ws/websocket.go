@@ -29,6 +29,9 @@ type UserClient struct{
 type Room struct{
 	users []User
 	playAgainRequest bool
+	boardState []interface{}
+	startTime string
+	currentPlayer float64
 }
 
 type Packet struct {
@@ -129,6 +132,22 @@ func receiver(ws *websocket.Conn){
 		}
 		
 	}
+	if packet.Type == "saveState"{
+		data := packet.Data.(map[string] interface{})
+		roomId := data["roomId"].(string)
+		boardState := data["boardState"].([]interface{})
+		startTime := data["startTime"].(string)
+		currentPlayer := data["currentPlayer"].(float64)
+		room := rooms[roomId]
+		if len(boardState) > 0{
+			room.boardState = boardState
+		}
+		if startTime != ""{
+			room.startTime = startTime
+		}
+		room.currentPlayer = currentPlayer
+		rooms[roomId] = room
+	}
 
 	if packet.Type == "join-room"{
 		data := packet.Data.(map[string] interface{})
@@ -139,6 +158,7 @@ func receiver(ws *websocket.Conn){
 		host := data["host"].(bool)
 		room := rooms[roomId]
 		roomUsers := room.users
+		fmt.Println(userId,roomId)
 
 		// checking if user is trying to reconnect
 		found := false
@@ -152,6 +172,17 @@ func receiver(ws *websocket.Conn){
 			}
 		}
 		if found{
+			if len(room.boardState) > 0{
+			packet.Type="syncState"
+			packet.Data = map[string]interface{}{
+				"boardState": room.boardState,
+				"startTime": room.startTime,
+				"currentPlayer": room.currentPlayer,
+			}
+			fmt.Println("sending syncState")
+			fmt.Println(packet.Data)
+			ws.WriteJSON(packet)
+		}
 			continue
 		}
 
