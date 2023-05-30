@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -17,6 +18,7 @@ type User struct{
 	host bool
 	gameId int
 	photo string
+	disconnected bool
 }
 
 type UserClient struct{
@@ -40,6 +42,7 @@ type Packet struct {
 }
 
 var rooms = make(map[string]Room)
+var clients = make(map[*websocket.Conn]string)
 var upgrader= websocket.Upgrader{
 	ReadBufferSize: 1024,
 	WriteBufferSize: 1024,
@@ -54,18 +57,59 @@ func handleConnection(w http.ResponseWriter , r *http.Request){
 		log.Println("client connected")
 		receiver(ws)
 }
+func checkConnection(ws *websocket.Conn){
+	room := rooms[clients[ws]]
+	roomUsers := room.users
+	for i := range roomUsers{
+		if roomUsers[i].conn == ws && roomUsers[i].disconnected{
+			// emit leave game to users in this room
+			packet := &Packet{}
+			packet.Type = "leaveGame"
+			packet.Data = nil
+			for j := range roomUsers{
+				if roomUsers[j].conn != ws{
+					roomUsers[j].conn.WriteJSON(packet)
+				}
+			}
+			cleanupResources(clients[ws])
+		}
+	}
+}
+func cleanupResources(roomId string){
+	room := rooms[roomId]
+	roomUsers := room.users
+	for i := range roomUsers{
+		roomUsers[i].conn.Close()
+	}
+	delete(rooms,roomId)
+}
 
 func receiver(ws *websocket.Conn){
 	for{
 		packet := &Packet{}
+		// fmt.Println(ws)
 		err :=ws.ReadJSON(packet)
 	if err != nil{
 		log.Println(err)
+		fmt.Println("error in reading packet")
+		room := rooms[clients[ws]]
+		roomUsers := room.users
+		for i := range roomUsers{
+			if roomUsers[i].conn == ws{
+				roomUsers[i].disconnected = true
+				room.users = roomUsers
+				rooms[clients[ws]] = room
+				time.AfterFunc(6*time.Second, func(){
+						checkConnection(ws)
+				})
+			}
+		}
 		break
 	}
 	if packet.Type == "create-room"{
 		uuid,_ := exec.Command("uuidgen").Output()
 		roomId :=strings.TrimSpace(string(uuid))
+		clients[ws]=roomId
 		rooms[roomId]= Room{
 			users: []User{},
 			playAgainRequest: false,
@@ -91,16 +135,19 @@ func receiver(ws *websocket.Conn){
 		
 	}
 	if packet.Type == "leaveGame"{
+		fmt.Println("leaveGame")
 		data := packet.Data.(map[string] interface{})
 		roomId := data["roomId"].(string)
 		oppId := data["oppId"].(string)
 		roomUsers := rooms[roomId].users
+		fmt.Println(oppId)
 		for _,user := range roomUsers{
 			if user.userId == oppId{
 				packet.Data = nil
 				user.conn.WriteJSON(packet)
 			}
 		}
+		cleanupResources(roomId)
 		
 	}
 
@@ -157,6 +204,21 @@ func receiver(ws *websocket.Conn){
 		photo := data["photo"].(string)
 		host := data["host"].(bool)
 		room := rooms[roomId]
+		// if room doesnot exist send bad request event
+		if room.users == nil{
+			packet.Type="badRequest"
+			packet.Data = nil
+			ws.WriteJSON(packet)
+			break
+		}else{
+			packet.Type="validRoom"
+			packet.Data = nil
+			ws.WriteJSON(packet)
+		}
+
+
+	
+		clients[ws]=roomId
 		roomUsers := room.users
 		fmt.Println(userId,roomId)
 
@@ -172,6 +234,15 @@ func receiver(ws *websocket.Conn){
 			}
 		}
 		if found{
+			// set disconnected to false
+			for i := range roomUsers{
+				if roomUsers[i].userId == userId{
+					roomUsers[i].disconnected = false
+					room.users = roomUsers
+					rooms[roomId] = room
+					break
+				}
+			}
 			if len(room.boardState) > 0{
 			packet.Type="syncState"
 			packet.Data = map[string]interface{}{
