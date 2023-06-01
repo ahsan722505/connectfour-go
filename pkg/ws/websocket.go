@@ -76,11 +76,6 @@ func checkConnection(ws *websocket.Conn){
 	}
 }
 func cleanupResources(roomId string){
-	room := rooms[roomId]
-	roomUsers := room.users
-	for i := range roomUsers{
-		roomUsers[i].conn.Close()
-	}
 	delete(rooms,roomId)
 }
 
@@ -165,6 +160,13 @@ func receiver(ws *websocket.Conn){
 				user.conn.WriteJSON(packet)
 			}
 			room.playAgainRequest = false
+			board := make([]interface{}, 6)
+			for i := 0; i < 6; i++ {
+				board[i] = make([]int, 6)
+			}
+			room.boardState = board
+			room.startTime = time.Now().Format("2006-01-02 15:04:05")
+			room.currentPlayer = 1
 			rooms[roomId] = room
 		}else{
 			// forwarding request to other client	
@@ -292,6 +294,14 @@ func receiver(ws *websocket.Conn){
 			fmt.Printf("json data: %s\n", jsonData)
 			socket.WriteJSON(packet)
 		}
+		board := make([]interface{}, 6)
+		for i := 0; i < 6; i++ {
+			board[i] = make([]int, 6)
+		}
+		room.boardState = board
+		room.startTime = time.Now().Format("2006-01-02 15:04:05")
+		room.currentPlayer = 1
+		rooms[roomId] = room
 	}
 	}
 		
