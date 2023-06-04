@@ -15,7 +15,6 @@ type User struct{
 	conn  *websocket.Conn
 	username string
 	userId string
-	host bool
 	gameId int
 	photo string
 	disconnected bool
@@ -24,7 +23,6 @@ type User struct{
 type UserClient struct{
 	Username string 
 	UserId string 	
-	Host bool
 	GameId int
 	Photo string 	
 }
@@ -142,9 +140,25 @@ func receiver(ws *websocket.Conn){
 				user.conn.WriteJSON(packet)
 			}
 		}
-		cleanupResources(roomId)
-		
+		cleanupResources(roomId)	
 	}
+
+	if packet.Type == "sendMessage"{
+		fmt.Println("sendMessage");
+		data := packet.Data.(map[string] interface{})
+		roomId := data["roomId"].(string)
+		oppId := data["oppId"].(string)
+		message := data["message"].(string)
+		roomUsers := rooms[roomId].users
+		for _,user := range roomUsers{
+			if user.userId == oppId{
+				packet.Type="receiveMessage"
+				packet.Data = message
+				user.conn.WriteJSON(packet)
+			}
+		}
+	}
+
 
 	if packet.Type == "playAgainRequest"{
 		data := packet.Data.(map[string] interface{})
@@ -204,7 +218,6 @@ func receiver(ws *websocket.Conn){
 		username := data["username"].(string)
 		userId := data["userId"].(string)
 		photo := data["photo"].(string)
-		host := data["host"].(bool)
 		room := rooms[roomId]
 		// if room doesnot exist send bad request event
 		if room.users == nil{
@@ -263,7 +276,6 @@ func receiver(ws *websocket.Conn){
 			conn : ws,
 			username: username,
 			userId: userId,
-			host: host,
 			gameId: len(roomUsers) + 1,
 			photo: photo,
 		}
@@ -281,7 +293,6 @@ func receiver(ws *websocket.Conn){
 				players=append(players, UserClient{
 					Username: roomUsers[j].username,
 					UserId: roomUsers[j].userId,
-					Host: roomUsers[j].host,
 					GameId: roomUsers[j].gameId,
 					Photo: roomUsers[j].photo,
 				})
