@@ -102,6 +102,7 @@ func receiver(ws *websocket.Conn){
 	if packet.Type == "create-room"{
 		uuid,_ := exec.Command("uuidgen").Output()
 		roomId :=strings.TrimSpace(string(uuid))
+		fmt.Println(roomId)
 		clients[ws]=roomId
 		rooms[roomId]= Room{
 			users: []User{},
