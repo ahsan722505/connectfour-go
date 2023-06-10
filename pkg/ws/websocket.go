@@ -324,6 +324,10 @@ func receiver(ws *websocket.Conn){
 
 func setUpRoutes(){
 	http.HandleFunc("/ws",handleConnection)
+	http.HandleFunc("/heartbeat",func(w http.ResponseWriter , r *http.Request){
+		w.Write([]byte("alive"))
+	})
+
 }
 func StartWebSocketServer(){
 	setUpRoutes()
