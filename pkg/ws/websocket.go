@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os/exec"
-	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 type User struct{
@@ -100,8 +99,9 @@ func receiver(ws *websocket.Conn){
 		break
 	}
 	if packet.Type == "create-room"{
-		uuid,_ := exec.Command("uuidgen").Output()
-		roomId :=strings.TrimSpace(string(uuid))
+		// uuid,_ := exec.Command("uuidgen").Output()
+		// roomId :=strings.TrimSpace(string(uuid))
+		roomId := uuid.New().String()
 		fmt.Println(roomId)
 		clients[ws]=roomId
 		rooms[roomId]= Room{
